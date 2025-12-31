@@ -57,7 +57,7 @@ export default function Page() {
   const [streak, setStreak] = useState(0);
   const [journal, setJournal] = useState("");
   const [completedDays, setCompletedDays] = useState(0);
-  const [showIntro, setShowIntro] = useState(() => !localStorage.getItem("introSeen"));
+  const [showIntro, setShowIntro] = useState(false); // initialize false; set in useEffect
 
   // Special holidays
   const specialHolidays = [
@@ -69,24 +69,24 @@ export default function Page() {
   const day = days.find(d => d.day === currentDay);
   if (!day) return null;
 
-  // Load bookmark
+  // Initialize localStorage-dependent state after mount
   useEffect(() => {
-    const saved = localStorage.getItem("bookmarkedDay");
-    if (saved) {
-      const parsed = parseInt(saved);
+    if (typeof window === "undefined") return;
+
+    // Show streak intro only if not seen
+    const introSeen = localStorage.getItem("introSeen");
+    if (!introSeen) setShowIntro(true);
+
+    // Load bookmark
+    const savedBookmark = localStorage.getItem("bookmarkedDay");
+    if (savedBookmark) {
+      const parsed = parseInt(savedBookmark);
       if (!isNaN(parsed) && parsed >= 1 && parsed <= 365) {
         setCurrentDay(parsed);
       }
     }
-  }, []);
 
-  // Save bookmark
-  useEffect(() => {
-    localStorage.setItem("bookmarkedDay", currentDay);
-  }, [currentDay]);
-
-  // Load streak
-  useEffect(() => {
+    // Load streak
     const savedStreak = JSON.parse(localStorage.getItem("streak")) || { count: 0, lastDate: null };
     const today = new Date().toISOString().slice(0,10);
     if (savedStreak.lastDate) {
@@ -102,18 +102,28 @@ export default function Page() {
     savedStreak.lastDate = today;
     localStorage.setItem("streak", JSON.stringify(savedStreak));
     setStreak(savedStreak.count);
+  }, []);
+
+  // Save bookmark on day change
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("bookmarkedDay", currentDay);
+    }
   }, [currentDay]);
 
-  // Load journal and update completed days
+  // Load journal and update completed days on day change
   useEffect(() => {
-    const saved = localStorage.getItem(`journal-day-${currentDay}`) || "";
-    setJournal(saved);
+    if (typeof window === "undefined") return;
+    const savedJournal = localStorage.getItem(`journal-day-${currentDay}`) || "";
+    setJournal(savedJournal);
     const completed = days.filter(d => localStorage.getItem(`journal-day-${d.day}`)).length;
     setCompletedDays(completed);
   }, [currentDay]);
 
   // Notifications
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
     if ("Notification" in window && Notification.permission !== "granted") {
       Notification.requestPermission();
     }
@@ -143,7 +153,7 @@ export default function Page() {
     }
   };
 
-  // Navigation
+  // Navigation functions
   const nextDay = () => { if (currentDay < 365) setCurrentDay(currentDay + 1); };
   const prevDay = () => { if (currentDay > 1) setCurrentDay(currentDay - 1); };
   const jumpToDay = () => {
@@ -165,25 +175,26 @@ export default function Page() {
   const handleJournalChange = (e) => {
     const value = e.target.value;
     setJournal(value);
-    localStorage.setItem(`journal-day-${currentDay}`, value);
-    const completed = days.filter(d => localStorage.getItem(`journal-day-${d.day}`)).length;
-    setCompletedDays(completed);
+    if (typeof window !== "undefined") {
+      localStorage.setItem(`journal-day-${currentDay}`, value);
+      const completed = days.filter(d => localStorage.getItem(`journal-day-${d.day}`)).length;
+      setCompletedDays(completed);
+    }
   };
   const clearBookmark = () => {
-    localStorage.removeItem("bookmarkedDay");
+    if (typeof window !== "undefined") localStorage.removeItem("bookmarkedDay");
     setCurrentDay(1);
   };
 
+  // Music & intro handling
   const handleContinueIntro = () => {
-    localStorage.setItem("introSeen", "true");
+    if (typeof window !== "undefined") localStorage.setItem("introSeen", "true");
     setShowIntro(false);
-    // Play background music after user interaction
     const audio = document.getElementById("backgroundMusic");
     if (audio) {
       audio.play().catch(err => console.log("Autoplay prevented", err));
     }
   };
-
   const toggleMusic = () => {
     const audio = document.getElementById("backgroundMusic");
     if (!audio) return;
@@ -194,9 +205,7 @@ export default function Page() {
   const progressPercent = Math.round((completedDays / 365) * 100);
 
   // Show streak intro first
-  if (showIntro) {
-    return <StreakIntro streak={streak} onContinue={handleContinueIntro} />;
-  }
+  if (showIntro) return <StreakIntro streak={streak} onContinue={handleContinueIntro} />;
 
   return (
     <div style={{ minHeight:"100vh", backgroundColor:"#FBF7F2", padding:24, fontFamily:"Georgia, serif" }}>
@@ -204,7 +213,6 @@ export default function Page() {
       {/* Audio */}
       <audio id="backgroundMusic" loop>
         <source src="/music/peaceful.mp3" type="audio/mpeg" />
-        Your browser does not support the audio element.
       </audio>
       
       {/* Music Toggle */}
